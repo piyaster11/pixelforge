@@ -74,9 +74,9 @@ $('#myTools').onclick = e => { const a = e.target.dataset.a, l = curLook(), id =
 function rebuildStrip() {
   buildStrip(); thumbBase = null;
   const first = strip.querySelector('.look'); if (MY.length) { const h = Object.assign(document.createElement('div'), { className: 'lhead', textContent: 'My Looks' }); first.after(h); let at = h;
-    MY.forEach(m => { const b = document.createElement('button'); b.className = 'look mine'; b.dataset.look = m.id; b.append(mk(1, 1), Object.assign(document.createElement('span'), { textContent: m.name })); b.onclick = () => setLook(m.id); at.after(b); at = b; });
+    MY.forEach(m => { const b = document.createElement('button'); b.className = 'look mine'; b.dataset.look = m.id; b.dataset.cat = 'my'; io && io.observe(b); b.append(mk(1, 1), Object.assign(document.createElement('span'), { textContent: m.name })); b.onclick = () => setLook(m.id); at.after(b); at = b; });
     const h2 = Object.assign(document.createElement('div'), { className: 'lhead', textContent: 'Presets' }); at.after(h2); }
-  refreshLooks();
+  setLookCat(lookCat); refreshLooks();
 }
 const _refreshLooks = refreshLooks;
 refreshLooks = function () { _refreshLooks(); const l = curLook(), id = l && l.p.look, mine = !!(id && id.startsWith('my-') && LOOK[id]); $('#myTools').hidden = !mine; if (mine) $('#myName').textContent = LOOK[id].name; };

@@ -115,3 +115,9 @@ input[type=number]{width:58px}input[type=range]{accent-color:#ff7a3d}
 .lhead{flex:none;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;color:#ff7a3d;text-transform:uppercase;letter-spacing:.08em;align-self:center}
 .look.mine canvas{outline:1px dashed #ff7a3d}
 @media (max-width:899px){#myBar>button,#myTools button{min-height:44px}}
+
+#lookCats{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;scrollbar-width:none}#lookCats::-webkit-scrollbar{display:none}
+#lookCats button{flex:none;font-size:12px;padding:5px 11px;border-radius:14px;border:1px solid #444;background:#222;color:#ccc}
+#lookCats button.on{background:#ff7a3d;border-color:#ff7a3d;color:#fff}
+.look[hidden],.lhead[hidden]{display:none!important}
+@media (max-width:820px){#lookCats button{font-size:13px;padding:7px 13px;min-height:32px}}
