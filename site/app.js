@@ -481,7 +481,16 @@ function destructiveAdj(t) {
 
 function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
 const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
-async function fileToCanvas(file) { const url = URL.createObjectURL(file); try { const img = await loadImg(url); const c = mk(img.naturalWidth, img.naturalHeight); c.getContext('2d').drawImage(img, 0, 0); return c; } finally { URL.revokeObjectURL(url); } }
+const MAX_DIM = 4096;
+async function fileToCanvas(file) {
+  let src = null, w, h;
+  if (window.createImageBitmap) { try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); w = src.width; h = src.height; } catch (e) { src = null; } }
+  if (!src) { const url = URL.createObjectURL(file); try { src = await loadImg(url); w = src.naturalWidth; h = src.naturalHeight; } catch (e) { throw new Error(/hei[cf]/i.test(file.type + file.name) ? 'HEIC' : 'decode'); } finally { setTimeout(() => URL.revokeObjectURL(url), 0); } }
+  const s = Math.min(1, MAX_DIM / Math.max(w, h)), c = mk(Math.round(w * s), Math.round(h * s)), x = c.getContext('2d');
+  x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, c.width, c.height); if (src.close) src.close();
+  if (s < 1) setTimeout(() => toast(`Large photo resized to ${c.width}×${c.height}`), 50);
+  return c;
+}
 async function openFile(file, asLayer) {
   try {
     const n = file.name.toLowerCase();
@@ -490,7 +499,7 @@ async function openFile(file, asLayer) {
     const c = await fileToCanvas(file);
     if (asLayer && doc) { const l = newLayer({ name: file.name.replace(/\.\w+$/, '') }); l.canvas.getContext('2d').drawImage(c, Math.round((doc.w - c.width) / 2), Math.round((doc.h - c.height) / 2)); addLayer(l, 'Place Image'); }
     else { doc = { w: c.width, h: c.height, layers: [], active: 0, name: file.name.replace(/\.\w+$/, '') }; uid = 1; doc.layers.push(newLayer({ name: 'Background', canvas: c })); afterDocLoad('Open'); }
-  } catch (e) { console.warn(e); toast('Could not open ' + file.name); }
+  } catch (e) { console.warn(e); toast(e.message === 'HEIC' ? 'This browser cannot read HEIC. Choose "Most Compatible" in Camera settings or share as JPG.' : 'Could not open ' + file.name); }
 }
 function exportBlob(format, quality) {
   return new Promise(res => {
@@ -515,6 +524,7 @@ async function loadProject(d) {
     l.canvas = mk(d.w, d.h); if (o.canvas) l.canvas.getContext('2d').drawImage(await loadImg(o.canvas), 0, 0);
     if (o.mask) { l.mask = mk(d.w, d.h); l.mask.getContext('2d').drawImage(await loadImg(o.mask), 0, 0); }
     if (l.type === 'adjust') l.canvas = mk(1, 1);
+    if (l.type === 'adjust' && !ADJ[l.adj]) continue;
     doc.layers.push(l);
   }
   for (const l of doc.layers) if (l.type === 'text') renderText(l);
@@ -657,7 +667,7 @@ $('#opacity').onkeydown = e => e.stopPropagation();
 document.querySelectorAll('.lbtns button').forEach(b => b.onclick = e => {
   if (!doc) return; const a = b.dataset.a;
   if (a === 'newLayer') addLayer(newLayer(), 'New Layer'); else if (a === 'dupLayer') dupLayer(); else if (a === 'delLayer') delLayer(); else if (a === 'mergeDown') mergeDown(); else if (a === 'addMask') { if (act().mask) toast('Layer already has a mask'); else addMask(); }
-  else if (a === 'adjMenu') { hideMenu(); dd.innerHTML = ''; Object.keys(ADJ).forEach(k => { const d = document.createElement('div'); d.className = 'it'; d.textContent = ADJ[k].name; d.onclick = () => { hideMenu(); addAdjLayer(k); }; dd.appendChild(d); }); dd.hidden = false; const r = b.getBoundingClientRect(); dd.style.left = Math.min(r.left, innerWidth - 240) + 'px'; dd.style.top = (r.top - dd.offsetHeight - 4) + 'px'; e.stopPropagation(); }
+  else if (a === 'adjMenu') { hideMenu(); dd.innerHTML = ''; Object.keys(ADJ).filter(k => k !== 'look').forEach(k => { const d = document.createElement('div'); d.className = 'it'; d.textContent = ADJ[k].name; d.onclick = () => { hideMenu(); addAdjLayer(k); }; dd.appendChild(d); }); dd.hidden = false; const r = b.getBoundingClientRect(); dd.style.left = Math.min(r.left, innerWidth - 240) + 'px'; dd.style.top = (r.top - dd.offsetHeight - 4) + 'px'; e.stopPropagation(); }
 });
 function thumb(c, src, mask) { const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); if (mask) { x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height); } const s = Math.min(c.width / doc.w, c.height / doc.h); x.drawImage(src, (c.width - doc.w * s) / 2, (c.height - doc.h * s) / 2, doc.w * s, doc.h * s); }
 let dragIdx = null;

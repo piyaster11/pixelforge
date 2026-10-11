@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#101013">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PixelForge">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>PixelForge — browser image editor</title>
 <meta name="description" content="PixelForge: a free, private, layer-based image editor that runs entirely in your browser.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23ff7a3d'/><path d='M9 23V9h8a5 5 0 010 10h-4v4z' fill='%23101013'/></svg>">
@@ -10,7 +17,7 @@
 </head>
 <body>
 <div id="app">
-  <header id="menubar"><div class="brand"><span class="logo">P</span>PixelForge</div><nav id="menus"></nav><div id="docname"></div></header>
+  <header id="menubar"><div class="brand"><span class="logo">P</span>PixelForge</div><button id="mMenu" class="mob ib" aria-label="Menu">☰</button><nav id="menus"></nav><div id="docname"></div><button id="mUndo" class="mob ib" aria-label="Undo">↶</button><button id="mRedo" class="mob ib" aria-label="Redo">↷</button><div class="saveGrp"><button id="saveBtn" class="primary" title="Save image">⬇ Save</button><button id="saveFmtBtn" title="Save format">JPG ▾</button></div></header>
   <div id="options"></div>
   <div id="main">
     <aside id="tools"></aside>
@@ -19,12 +26,14 @@
         <div class="startbox">
           <h1><span class="logo big">P</span>PixelForge</h1>
           <p>A layer-based image editor that runs entirely in your browser. Your images never leave your device.</p>
-          <div class="row"><button id="btnNew" class="primary">New document</button><button id="btnOpen">Open image / project…</button></div>
+          <button id="btnPhoto" class="primary bigopen">📷 Open photo</button>
+          <div class="row"><button id="btnNew">New document</button><button id="btnOpen">Open image / project…</button></div>
           <p class="hint">Or drop / paste an image anywhere. Supports PNG, JPG, WebP, GIF, PSD and .pforge projects.</p>
         </div>
       </div>
     </section>
     <aside id="panels">
+      <div class="panel" id="pLooks"><h3>Looks</h3><div id="looksStrip"></div><label class="lint">Intensity <input id="lookAmt" type="range" min="0" max="100" value="100"><span id="lookAmtV">100%</span></label></div>
       <div class="panel" id="pLayers"><h3>Layers</h3>
         <div class="lrow"><select id="blend"></select><label>Opacity <input id="opacity" type="number" min="0" max="100" value="100">%</label></div>
         <div id="layerList"></div>
@@ -41,14 +50,34 @@
       <div class="panel" id="pHist"><h3>History</h3><div id="history"></div></div>
     </aside>
   </div>
+  <div id="sheet" hidden>
+    <div class="grab"></div>
+    <section data-tab="looks"></section>
+    <div class="seg sub" id="editSeg"><button data-sub="adjust">Adjust</button><button data-sub="tools">Tools</button><button data-sub="layers">Layers</button></div>
+    <section data-tab="adjust"><div class="sgrid" id="adjBtns"></div></section>
+    <section data-tab="tools"></section>
+    <section data-tab="layers"></section>
+    <section data-tab="save"><h3>Save image</h3>
+      <div class="seg" id="fmtSeg"><button data-f="jpeg">JPG</button><button data-f="png">PNG</button></div>
+      <label class="lint" id="qRow">Quality <input id="saveQ" type="range" min="50" max="100" value="92"><span id="saveQV">92%</span></label>
+      <button id="shareBtn" class="primary big">Save to Photos</button>
+      <div class="sinfo" id="saveInfo"></div>
+      <div class="srow"><button id="mExport">Export…</button><button id="mProject">Save project</button></div>
+    </section>
+  </div>
+  <nav id="tabbar"><button data-tab="looks"><i>✨</i>Looks</button><button id="cmpBtn" class="cmp"><i>◑</i>Hold to compare</button><button data-tab="edit"><i>⋯</i>Edit</button><button id="nextBtn"><i>📷</i>New photo</button></nav>
   <footer id="status"><span id="stZoom"></span><span id="stSize"></span><span id="stPos"></span><span id="stMsg"></span></footer>
 </div>
 <input type="file" id="fileIn" accept="image/*,.psd,.pforge,.json" hidden>
+<input type="file" id="photoIn" accept="image/*" hidden>
 <input type="file" id="placeIn" accept="image/*" hidden>
 <div id="modal" hidden><div class="dlg"><h3 id="dlgTitle"></h3><div id="dlgBody"></div><div class="dlgBtns"><button id="dlgCancel">Cancel</button><button id="dlgOk" class="primary">OK</button></div></div></div>
 <div id="dropdown" hidden></div>
 <div id="toast" hidden></div>
 <script src="vendor/ag-psd.js"></script>
 <script src="app.js"></script>
+<script src="looks.js"></script>
+<script src="learn.js"></script>
+<script src="mobile.js"></script>
 </body>
 </html>
