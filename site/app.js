@@ -89,8 +89,9 @@ function newDoc(w, h, fill, name) {
   doc.layers.push(l); afterDocLoad('New document');
 }
 function afterDocLoad(label) {
-  comp = mk(doc.w, doc.h); sel = null; live = null; hist = []; hi = -1; $('#start').hidden = true;
-  commit(label); fit(); refreshAll();
+  const old = hist; releaseCanvas(comp); comp = mk(doc.w, doc.h); sel = null; live = null; hist = []; hi = -1; doc.orig = null; $('#start').hidden = true;
+  old.forEach(e => entryCanvases(e, new Set()).forEach(releaseCanvas));
+  commit(label); doc.orig = hist[0]; window.onDocLoaded && window.onDocLoaded(label); fit(); refreshAll();
 }
 const act = () => doc && doc.layers[doc.active];
 const target = (l = act()) => l.editMask && l.mask ? l.mask : l.canvas;
@@ -128,20 +129,54 @@ function composite(out = comp, layers = doc.layers) {
 }
 
 function snapLayer(l) { return Object.assign({}, l, { canvas: clone(l.canvas), mask: l.mask && clone(l.mask), p: l.p && Object.assign({}, l.p) }); }
+// --- Memory-aware history ---------------------------------------------------
+// History snapshots are immutable and shared between entries: a layer canvas is
+// only copied again when it was actually touched (any getContext call marks it
+// dirty). Old entries are dropped by a byte budget, and dropped canvases are
+// released (width/height = 0) so iOS Safari frees their memory immediately.
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const LOWMEM = IOS || matchMedia('(max-width: 899px)').matches;
+const HIST_BUDGET = (LOWMEM ? 160 : 900) * 1048576, MAX_PX = LOWMEM ? 12.6e6 : 40e6; // iOS: ~16.7 MP per canvas, ~384 MB of canvases per page
+HTMLCanvasElement.prototype.getContext = (g => function (...a) { this._dirty = true; return g.apply(this, a); })(HTMLCanvasElement.prototype.getContext);
+const snapOf = new WeakMap();
+function snapCanvas(c) {
+  if (!c) return c; const s = snapOf.get(c);
+  if (s && !c._dirty && s.width === c.width && s.height === c.height && s.width) return s;
+  const n = clone(c); n._snap = true; c._dirty = false; snapOf.set(c, n); return n;
+}
+function liveCanvas(s) { if (!s) return s; const c = clone(s); c._dirty = false; snapOf.set(c, s); return c; }
+const snapL = l => Object.assign({}, l, { canvas: snapCanvas(l.canvas), mask: l.mask && snapCanvas(l.mask), p: l.p && Object.assign({}, l.p) });
+const entryCanvases = (e, set) => { for (const l of e.layers) { set.add(l.canvas); if (l.mask) set.add(l.mask); } return set; };
+function histBytes() { const set = new Set(); hist.forEach(e => entryCanvases(e, set)); if (doc && doc.orig) entryCanvases(doc.orig, set); let b = 0; set.forEach(c => b += c.width * c.height * 4); return b; }
+function releaseCanvas(c) { if (c && c.width) { c.width = 0; c.height = 0; } }
+function pruneHist(dropped) {
+  if (!dropped.length) return; const keep = new Set(); hist.forEach(e => entryCanvases(e, keep)); if (doc && doc.orig) entryCanvases(doc.orig, keep);
+  dropped.forEach(e => entryCanvases(e, new Set()).forEach(c => { if (!keep.has(c)) releaseCanvas(c); }));
+}
 function commit(label) {
-  hist = hist.slice(0, hi + 1);
-  hist.push({ label, w: doc.w, h: doc.h, active: doc.active, layers: doc.layers.map(snapLayer) });
-  if (hist.length > 60) hist.shift();
-  hi = hist.length - 1; refreshAll();
+  const dropped = hist.slice(hi + 1); hist = hist.slice(0, hi + 1);
+  hist.push({ label, w: doc.w, h: doc.h, active: doc.active, layers: doc.layers.map(snapL) });
+  while (hist.length > 1 && (hist.length > 60 || histBytes() > HIST_BUDGET)) dropped.push(hist.shift());
+  pruneHist(dropped);
+  hi = hist.length - 1; refreshAll(); window.onCommitted && window.onCommitted(label);
+}
+function applyEntry(s) {
+  cancelTools(); const resized = s.w !== doc.w || s.h !== doc.h;
+  doc.w = s.w; doc.h = s.h; doc.active = s.active; doc.layers = s.layers.map(l => Object.assign({}, l, { canvas: liveCanvas(l.canvas), mask: l.mask && liveCanvas(l.mask), p: l.p && Object.assign({}, l.p) }));
+  if (resized) { releaseCanvas(comp); comp = mk(doc.w, doc.h); sel = null; }
 }
 function restore(i) {
   if (i < 0 || i >= hist.length) return;
-  hi = i; const s = hist[i]; cancelTools();
-  const resized = s.w !== doc.w || s.h !== doc.h;
-  doc.w = s.w; doc.h = s.h; doc.active = s.active; doc.layers = s.layers.map(snapLayer);
-  if (resized) { comp = mk(doc.w, doc.h); sel = null; }
-  refreshAll();
+  hi = i; applyEntry(hist[i]); refreshAll(); window.onCommitted && window.onCommitted('restore');
 }
+// Reset: back to the photo exactly as it was opened (undoable).
+function resetAll() {
+  if (!doc || !doc.orig) return; applyEntry(doc.orig); doc.layers.forEach(l => { if (l.id >= uid) uid = l.id + 1; });
+  const r = document.querySelector('#lookAmt'); if (r) { r.value = 100; const v = document.querySelector('#lookAmtV'); if (v) v.textContent = '100%'; }
+  commit('Reset'); fit(); toast('Reset to original');
+}
+function confirmReset() { if (!doc) return toast('Open a photo first'); dialog('Reset all changes?', [], null, resetAll); $('#dlgBody').innerHTML = '<p style="margin:0 0 4px">This removes the look, intensity, adjustments, edits, crops and resizes and returns the photo to the original. You can undo it.</p>'; $('#dlgOk').textContent = 'Reset'; }
+function canvasPixels() { const set = new Set(); hist.forEach(e => entryCanvases(e, set)); if (doc) { if (doc.orig) entryCanvases(doc.orig, set); doc.layers.forEach(l => { set.add(l.canvas); l.mask && set.add(l.mask); }); } set.add(comp); set.add(V); document.querySelectorAll('canvas').forEach(c => set.add(c)); let px = 0; set.forEach(c => px += c.width * c.height); return { canvases: set.size, px, mb: +(px * 4 / 1048576).toFixed(1), hist: hist.length, histMB: +(histBytes() / 1048576).toFixed(1) }; }
 const undo = () => restore(hi - 1), redo = () => restore(hi + 1);
 function setSelFromPath(path) {
   const m = mk(doc.w, doc.h), x = m.getContext('2d'); x.fillStyle = '#fff'; x.fill(path);
@@ -435,12 +470,14 @@ function imageSize() {
   dialog('Image Size', [['width', 'Width (px)', 'number', doc.w], ['height', 'Height (px)', 'number', doc.h], ['keep', 'Keep ratio', 'check', true]], null, v => {
     let w = +v.width, h = +v.height; if (v.keep) { if (w !== doc.w) h = Math.round(doc.h * w / doc.w); else if (h !== doc.h) w = Math.round(doc.w * h / doc.h); }
     if (w < 1 || h < 1 || w > 16384 || h > 16384) return toast('Invalid size');
+    if (w * h > MAX_PX) { const k = Math.sqrt(MAX_PX / (w * h)); w = Math.max(1, Math.floor(w * k)); h = Math.max(1, Math.floor(h * k)); toast(`Limited to ${w}×${h} (${(MAX_PX / 1e6).toFixed(0)} MP max) so the page doesn't run out of memory`); }
     const W = doc.w, H = doc.h, f = (c, s) => { c.imageSmoothingQuality = 'high'; c.drawImage(s, 0, 0, w, h); }; f.text = l => { l.x *= w / W; l.y *= h / H; l.size *= w / W; }; remap(w, h, f, 'Image Size');
   });
 }
+function imageSizeTo(w0) { let w = w0, h = Math.round(doc.h * w0 / doc.w); if (w * h > MAX_PX) { const k = Math.sqrt(MAX_PX / (w * h)); w = Math.floor(w * k); h = Math.floor(h * k); toast(`Limited to ${w}×${h} (${(MAX_PX / 1e6).toFixed(0)} MP max)`); } const W = doc.w, H = doc.h, f = (c, s) => { c.imageSmoothingQuality = 'high'; c.drawImage(s, 0, 0, w, h); }; f.text = l => { l.x *= w / W; l.y *= h / H; l.size *= w / W; }; remap(w, h, f, 'Image Size'); }
 function canvasSize() {
   dialog('Canvas Size', [['width', 'Width (px)', 'number', doc.w], ['height', 'Height (px)', 'number', doc.h]], null, v => {
-    const w = +v.width, h = +v.height, ox = Math.round((w - doc.w) / 2), oy = Math.round((h - doc.h) / 2); if (w < 1 || h < 1) return;
+    let w = +v.width, h = +v.height; if (w * h > MAX_PX) { toast('Canvas too large for this device'); return; } const ox = Math.round((w - doc.w) / 2), oy = Math.round((h - doc.h) / 2); if (w < 1 || h < 1) return;
     const f = (c, s) => c.drawImage(s, ox, oy); f.text = l => { l.x += ox; l.y += oy; }; remap(w, h, f, 'Canvas Size');
   });
 }
@@ -481,7 +518,7 @@ function destructiveAdj(t) {
 
 function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
 const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
-const MAX_DIM = 4096;
+const MAX_DIM = 4096; // 4096×4096 = 16.7 MP, the iOS per-canvas limit
 async function fileToCanvas(file) {
   let src = null, w, h;
   if (window.createImageBitmap) { try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); w = src.width; h = src.height; } catch (e) { src = null; } }
@@ -505,7 +542,7 @@ function exportBlob(format, quality) {
   return new Promise(res => {
     const c = composite(mk(doc.w, doc.h)); let out = c;
     if (format === 'jpeg') { out = mk(doc.w, doc.h); const x = out.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, doc.w, doc.h); x.drawImage(c, 0, 0); }
-    out.toBlob(res, 'image/' + format, quality);
+    out.toBlob(b => { res(b); releaseCanvas(c); releaseCanvas(out); }, 'image/' + format, quality);
   });
 }
 function exportDialog() {
@@ -571,6 +608,7 @@ let toastT;
 function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
 let dlgCb = null;
 function dialog(title, fields, onInput, onOk, onCancel) {
+  $('#dlgOk').textContent = 'OK';
   $('#dlgTitle').textContent = title; const body = $('#dlgBody'); body.innerHTML = '';
   const get = () => { const v = {}; body.querySelectorAll('[data-k]').forEach(e => v[e.dataset.k] = e.type === 'checkbox' ? e.checked : e.type === 'range' || e.type === 'number' ? +e.value : e.value); return v; };
   for (const [k, label, type, val, a, b, s] of fields) {
@@ -599,7 +637,7 @@ const need = f => () => { if (!doc) return toast('Open or create a document firs
 const zc = f => need(() => zoomAt(f(view.zoom), V.clientWidth / 2, V.clientHeight / 2));
 const MENUS = {
   File: [['New…', 'Alt+N', newDocDialog], ['Open…', 'Ctrl+O', () => $('#fileIn').click()], ['Place Image as Layer…', 'Shift+Ctrl+P', need(() => $('#placeIn').click())], '-', ['Save Project (.pforge)', 'Shift+Ctrl+S', need(saveProject)], ['Export Image (PNG/JPG/WebP)…', 'Ctrl+S', need(exportDialog)], ['Export PSD', '', need(exportPsd)]],
-  Edit: [['Undo', 'Ctrl+Z', undo], ['Redo', 'Shift+Ctrl+Z', redo], '-', ['Free Transform', 'Ctrl+T', need(startTransform)], ['Flip Layer Horizontal', '', need(() => flipLayer(true))], ['Flip Layer Vertical', '', need(() => flipLayer(false))], '-', ['Fill with Foreground', 'Alt+Backspace', need(() => fillSel(fg))], ['Clear', 'Delete', need(clearSel)]],
+  Edit: [['Undo', 'Ctrl+Z', undo], ['Redo', 'Shift+Ctrl+Z', redo], ['Reset to Original…', '', need(confirmReset)], '-', ['Free Transform', 'Ctrl+T', need(startTransform)], ['Flip Layer Horizontal', '', need(() => flipLayer(true))], ['Flip Layer Vertical', '', need(() => flipLayer(false))], '-', ['Fill with Foreground', 'Alt+Backspace', need(() => fillSel(fg))], ['Clear', 'Delete', need(clearSel)]],
   Image: [...Object.keys(ADJ).map(k => ['Adjustments ▸ ' + ADJ[k].name + (ADJ[k].params.length ? '…' : ''), { 'hue-saturation': 'Ctrl+U', levels: 'Ctrl+L', invert: 'Ctrl+I', grayscale: 'Shift+Ctrl+U' }[k] || '', need(() => destructiveAdj(k))]), '-', ['Image Size…', 'Alt+Ctrl+I', need(imageSize)], ['Canvas Size…', '', need(canvasSize)], ['Crop to Selection', '', need(() => T.crop.apply())], '-', ['Rotate Canvas 90° CW', '', need(() => rotateCanvas(1))], ['Rotate Canvas 90° CCW', '', need(() => rotateCanvas(-1))], ['Flip Canvas Horizontal', '', need(() => flipCanvas(true))], ['Flip Canvas Vertical', '', need(() => flipCanvas(false))]],
   Layer: [['New Layer', 'Shift+Ctrl+N', need(() => addLayer(newLayer(), 'New Layer'))], ['Duplicate Layer', 'Ctrl+J', need(dupLayer)], ['Delete Layer', '', need(delLayer)], '-', ...Object.keys(ADJ).map(k => ['New Adjustment Layer ▸ ' + ADJ[k].name, '', need(() => addAdjLayer(k))]), '-', ['Add Layer Mask', '', need(() => addMask())], ['Apply Layer Mask', '', need(applyMask)], ['Delete Layer Mask', '', need(deleteMask)], '-', ['Rasterize Layer', '', need(rasterize)], ['Merge Down', 'Ctrl+E', need(mergeDown)], ['Flatten Image', '', need(flatten)]],
   Select: [['All', 'Ctrl+A', need(selectAll)], ['Deselect', 'Ctrl+D', deselect], ['Inverse', 'Shift+Ctrl+I', need(invertSel)], ['Select Layer Pixels', '', need(() => { sel = { mask: clone(layerSrc(act())), path: null, edge: null }; R(); })]],
@@ -789,4 +827,5 @@ document.addEventListener('paste', e => { if (e.target.matches('input,textarea')
 window.addEventListener('beforeunload', e => { if (doc && hist.length > 1) { e.preventDefault(); e.returnValue = ''; } });
 
 setTool('move'); resizeView();
-window.PF = { get doc() { return doc; }, get hist() { return hist; }, get hi() { return hi; }, get sel() { return sel; }, newDoc, openFile, addAdjLayer, addMask, runFilter, destructiveAdj, setTool, setFg, undo, redo, composite, mergeDown, flatten, closeDlg, startTransform, applyTransform, rotateCanvas, exportBlob, psdBuffer, importPsd, projectData, loadProject, opt, view, selectAll };
+$('#resetBtn').onclick = confirmReset;
+window.PF = { imageSizeTo, resetAll, confirmReset, canvasPixels, get comp() { return comp; }, get doc() { return doc; }, get hist() { return hist; }, get hi() { return hi; }, get sel() { return sel; }, newDoc, openFile, addAdjLayer, addMask, runFilter, destructiveAdj, setTool, setFg, undo, redo, composite, mergeDown, flatten, closeDlg, startTransform, applyTransform, rotateCanvas, exportBlob, psdBuffer, importPsd, projectData, loadProject, opt, view, selectAll };

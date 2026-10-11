@@ -51,6 +51,7 @@ input[type=number]{width:58px}input[type=range]{accent-color:#ff7a3d}
 #textEdit{position:absolute;background:transparent;border:1px dashed #ff7a3d;color:transparent;caret-color:#ff7a3d;resize:none;outline:none;overflow:hidden;padding:0;line-height:1.2;white-space:pre}
 /* --- Save, Looks (desktop) --- */
 .mob,#tabbar,#sheet .grab{display:none}
+.resetBtn{margin-left:10px;padding:3px 10px;border-radius:5px}
 .saveGrp{display:flex;gap:2px;margin-left:10px}.saveGrp #saveBtn{border-radius:5px 0 0 5px;padding:3px 12px}.saveGrp #saveFmtBtn{border-radius:0 5px 5px 0;padding:3px 7px}
 #docname{margin-left:auto}
 #pLooks{flex:none}
@@ -75,7 +76,8 @@ input[type=number]{width:58px}input[type=range]{accent-color:#ff7a3d}
   .brand{margin-right:0;font-size:0}.brand .logo{width:28px;height:28px;font-size:16px}
   #menus,#status,#docname,#panels,#pHist{display:none!important}
   #main>#tools{display:none}
-  .saveGrp{margin-left:auto}.saveGrp #saveBtn{min-height:44px;padding:0 18px;font-size:16px;border-radius:22px 0 0 22px}.saveGrp #saveFmtBtn{min-height:44px;border-radius:0 22px 22px 0;padding:0 10px;font-size:13px}
+  .resetBtn{margin-left:auto;min-height:44px;padding:0 10px;font-size:14px;border-radius:22px;white-space:nowrap}
+  .saveGrp{margin-left:6px}.saveGrp #saveBtn{min-height:44px;padding:0 18px;font-size:16px;border-radius:22px 0 0 22px}.saveGrp #saveFmtBtn{min-height:44px;border-radius:0 22px 22px 0;padding:0 10px;font-size:13px}
   #app>#options{display:none}
   #stage{touch-action:none}
   #start{padding:20px calc(20px + env(safe-area-inset-right)) 20px calc(20px + env(safe-area-inset-left))}
@@ -121,3 +123,4 @@ input[type=number]{width:58px}input[type=range]{accent-color:#ff7a3d}
 #lookCats button.on{background:#ff7a3d;border-color:#ff7a3d;color:#fff}
 .look[hidden],.lhead[hidden]{display:none!important}
 @media (max-width:820px){#lookCats button{font-size:13px;padding:7px 13px;min-height:32px}}
+@media (max-width:429px){ .resetBtn{min-width:44px;padding:0 6px;font-size:20px;background:none;border:none} .resetBtn .rl{display:none} }

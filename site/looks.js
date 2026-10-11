@@ -216,9 +216,9 @@ function baseSig(c) { const t = mk(8, 8), x = cx2(t); x.drawImage(c, 0, 0, 8, 8)
 applyAdj = function (c, t, p) {
   if (t !== 'look') return _applyAdj(c, t, p);
   const s = lookFull ? 1 : Math.min(1, 2048 / Math.max(c.width, c.height)), key = [p.look, s, c.width, c.height, docVer, live ? 'L' : '', baseSig(c)].join('|');
-  let F = lookMemo.get(key);
-  if (!F) { let src = c; if (s < 1) { src = mk(c.width * s, c.height * s); const sx = src.getContext('2d'); sx.imageSmoothingQuality = 'high'; sx.drawImage(c, 0, 0, src.width, src.height); } F = renderLook(src, p.look); lookMemo.set(key, F); if (lookMemo.size > 6) lookMemo.delete(lookMemo.keys().next().value); }
-  const x = c.getContext('2d'); x.save(); x.globalAlpha = clamp((p.amount ?? 100) / 100, 0, 1); x.imageSmoothingQuality = 'high'; x.drawImage(F, 0, 0, c.width, c.height); x.restore();
+  let F = lookMemo.get(key), tmp = false;
+  if (!F) { tmp = lookFull; let src = c; if (s < 1) { src = mk(c.width * s, c.height * s); const sx = src.getContext('2d'); sx.imageSmoothingQuality = 'high'; sx.drawImage(c, 0, 0, src.width, src.height); } F = renderLook(src, p.look); if (src !== c && s < 1) releaseCanvas(src); if (!lookFull) { lookMemo.set(key, F); while (lookMemo.size > 2) { const k = lookMemo.keys().next().value; releaseCanvas(lookMemo.get(k)); lookMemo.delete(k); } } }
+  const x = c.getContext('2d'); x.save(); x.globalAlpha = clamp((p.amount ?? 100) / 100, 0, 1); x.imageSmoothingQuality = 'high'; x.drawImage(F, 0, 0, c.width, c.height); x.restore(); if (tmp) releaseCanvas(F);
 };
 exportBlob = async function (f, q) { lookFull = true; try { return await _exportBlob(f, q); } finally { lookFull = false; } };
 
