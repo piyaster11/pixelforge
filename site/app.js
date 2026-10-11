@@ -778,6 +778,5 @@ document.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTra
 document.addEventListener('paste', e => { if (e.target.matches('input,textarea')) return; const it = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/')); if (it) { const f = it.getAsFile(); openFile(new File([f], 'Pasted', { type: f.type }), !!doc); } });
 window.addEventListener('beforeunload', e => { if (doc && hist.length > 1) { e.preventDefault(); e.returnValue = ''; } });
 
-if (location.hash === '#makeup-import') { const r = indexedDB.open('pf-xfer', 1); r.onupgradeneeded = () => r.result.createObjectStore('x'); r.onsuccess = () => { const g = r.result.transaction('x').objectStore('x').get('project'); g.onsuccess = () => { if (g.result) loadProject(g.result); history.replaceState(null, '', location.pathname); }; }; }
 setTool('move'); resizeView();
 window.PF = { get doc() { return doc; }, get hist() { return hist; }, get hi() { return hi; }, get sel() { return sel; }, newDoc, openFile, addAdjLayer, addMask, runFilter, destructiveAdj, setTool, setFg, undo, redo, composite, mergeDown, flatten, closeDlg, startTransform, applyTransform, rotateCanvas, exportBlob, psdBuffer, importPsd, projectData, loadProject, opt, view, selectAll };
